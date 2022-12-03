@@ -1,0 +1,101 @@
+Add your design document in here.
+Section 1 data structure:
+
+    -   Global open file table declared in file.h, initialised in main
+    -   Each process in proc has a file descriptor table, initialised in runprogram
+    -   Open file table has lock for accessing global variable (e.g. fork process) and array of open files
+    -   Each open file has respective flags, refcount (num of fds in current of) and offset (file pointer) 
+        for write position
+
+Section 2 file-system-related system calls implementation:
+
+open:
+
+    The issue was that the path given is the user path which has to be checked by the operating system to
+    verify the path is valid and not accessing foreign memory locations. This was solved by using copyinstr to
+    get kernel path from user path then creating an open file with kernel path.
+
+close:
+
+    The problem was that if after closing file with given fd and there are no more file descriptors pointing to
+    given open file, need to free given open file to prevent memory leaks. This was solved by decrementing
+    refcount in given open file, and checking if refcount equals 0. If equals, that means there are no more fds
+    and openfile can be freed.
+
+dup2:
+
+    The problem was that if the newfd already points to an existing open file and we perform dup2 function and
+    there are no more fds pointing to given open file, memory leak will occur. This was solved by checking
+    whether newfd has existing of, and if it does, perform sys_close on given fd.
+
+read/write: 
+
+    The issue related to read/write is that after each read/write, the file pointer needs to be updated accordingly
+    to the where the read/written process ends. Uio_offset keeps track of the ending position of read/write. The 
+    file pointer can be updated by assigning the value stored in uio_offset to the file pointer (offset).
+
+
+lseek:
+
+    In the design stage of lseek, several issues appeared. One of the issues is that the program has to 
+    be able to distinguish the object that does not support seeking. The problem is solved by using VOP_ISSEEKABLE. 
+    Another issue is that the program needs to be able to get the size of the file if the whence is SEEK_END, in 
+    which case VOP_STAT is used to generate the size of the file.
+
+
+Section 3 questions:
+
+1. What significant data structures have you added and what function do they perform?
+
+    - Structs fot file descriptor table (fd_table), open file table (of_table) and open file (of).
+
+    - File descriptor table (fd_table) contains an integer array that takes file descriptor as the index. The array 
+      in file descriptor table stores the index of the open file which is stored in the open file array in the open 
+      file table.
+
+    - Open file table (of_table) contains an array that takes the integer value returned from file descriptor table as 
+      the index. The array in open file table is of type open file (of). Since open file table (of_table) is shared
+      between processes, the open file table (of_table) also contains a lock which is designed for concurrency issues. 
+
+    - Open file (of) contains a pointer to the vnode, a file pointer (offset), a file descriptor reference count (refcount)
+      and a flag.
+
+    - With the file descriptor, open file (of) can be dereferenced through file descriptor table (fd_table) and 
+      open file table (of_table). Then vnode can be accessed through open file (of).
+    
+
+
+2. What are any significant issues surround managing the data structures and state do they contain?
+
+    - Concurrency issues need to be considered when managing the data structures.
+
+    - File descriptor table needs to be unique to different processes.
+
+    - File pointers need to be able to be shared by different processes.
+
+    - File descriptor table (fd_table) contains an array. Open file table (of_table) contains an array and a lock.
+      Open file (of) a pointer to the vnode, a file pointer (offset), a file descriptor reference count (refcount)
+      and a flag.
+
+
+3. What data structures are per-process and what structures are shared between processes?
+
+    - File descriptor table is per-process, open file table can be shared between processes.
+
+
+
+4. What is the main issues related to transferring data to and from applications?
+
+    - Different file systems may be mounted to the OS, in which case the OS needs to be able to support
+      different file systems to guarantee successful data transfers.
+    
+    - Virtual file systems support multiple file systems within the OS and provide a unified namespace.
+
+
+5. If fork() was implemented, what concurrency issues would be introduced to your implementation?
+
+    - Independent file descriptors need to be able to refer to a shared file pointer associated with the open file.
+
+    - File pointers need to be able to be shared between processes (parent and child).
+
+    - File pointer access needs to be mutually exclusive.
